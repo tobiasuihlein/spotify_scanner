@@ -77,7 +77,7 @@
 </head>
 <body>
     <div class="container">
-        <h1 style="text-align: center;">Spotify Preview Scanner</h1>
+        <h1 style="text-align: center;">Spotify Preview QR Code Scanner</h1>
         
         <div id="reader" class="hidden"></div>
         
@@ -87,7 +87,7 @@
         </div>
 
         <div class="controls">
-            <button id="startButton">Scan QR Code</button>
+            <button id="startButton">Scan Song</button>
         </div>
 
         <div id="errorMessage"></div>
@@ -120,7 +120,7 @@
 
             startScanning() {
                 this.reader.classList.remove('hidden');
-                this.startButton.textContent = 'Stop Scanning';
+                this.startButton.textContent = 'Close Scanner';
                 this.errorMessage.textContent = '';
 
                 this.html5QrcodeScanner = new Html5Qrcode("reader");
@@ -141,7 +141,7 @@
                     this.html5QrcodeScanner.stop().then(() => {
                         this.html5QrcodeScanner = null;
                         this.reader.classList.add('hidden');
-                        this.startButton.textContent = 'Start Scanning';
+                        this.startButton.textContent = 'Scan Next Song';
                     });
                 }
             }
