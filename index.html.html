@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Preview Scanner</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        #reader {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        #player-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .status {
+            margin: 16px 0;
+            padding: 12px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .manual-input {
+            margin-top: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #1DB954;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Music Preview Scanner</h1>
+        <div id="reader"></div>
+        <div id="status" class="status"></div>
+        
+        <div id="player-card">
+            <audio id="audio-player" controls>
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+
+        <div class="manual-input">
+            <p>Or enter a preview URL manually:</p>
+            <input type="text" id="url-input" 
+                   placeholder="https://p.scdn.co/mp3-preview/...">
+            <button onclick="handleManualInput()">Play</button>
+        </div>
+    </div>
+
+    <script>
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.style.display = 'block';
+            status.className = 'status ' + (isError ? 'error' : 'success');
+        }
+
+        function playPreview(url) {
+            // Validate URL format
+            if (!url.startsWith('https://p.scdn.co/mp3-preview/')) {
+                showStatus('Invalid preview URL format', true);
+                return;
+            }
+
+            const player = document.getElementById('audio-player');
+            const playerCard = document.getElementById('player-card');
+            
+            player.src = url;
+            playerCard.style.display = 'block';
+            
+            player.play().catch(error => {
+                showStatus('Click play to start preview');
+            });
+            
+            showStatus('Preview loaded successfully');
+        }
+
+        function handleManualInput() {
+            const url = document.getElementById('url-input').value.trim();
+            playPreview(url);
+        }
+
+        // Initialize QR Scanner
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader",
+            { 
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+            }
+        );
+
+        html5QrcodeScanner.render((decodedText) => {
+            playPreview(decodedText);
+        }, (error) => {
+            // Handle scan error (ignore)
+        });
+    </script>
+</body>
+</html>
