@@ -127,7 +127,6 @@
         let countdown = null;
         let isPlaying = false;
         let currentUrl = null;
-        let html5Qrcode = null;
 
         function showStatus(message) {
             const status = document.getElementById('status');
@@ -154,32 +153,42 @@
         }
 
         async function startScanner() {
-            if (html5Qrcode) {
-                await html5Qrcode.stop();
-                html5Qrcode = null;
+            try {
+                // First, try to close any existing scanner
+                if (html5QrcodeScanner) {
+                    await html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                }
+
+                // Clear the reader div completely
+                const readerDiv = document.getElementById('reader');
+                readerDiv.innerHTML = '';
+                
+                // Show scanner section
+                document.getElementById('scanner-section').style.display = 'block';
+                document.getElementById('player-section').style.display = 'none';
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('status').style.display = 'none';
+
+                // Create new scanner instance
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader",
+                    { 
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 },
+                        aspectRatio: 1.0,
+                        defaultInputByUser: true
+                    }
+                );
+
+                // Render the scanner
+                await html5QrcodeScanner.render(handleScan, handleError);
+
+            } catch (error) {
+                console.error("Scanner reset error:", error);
+                // If something goes wrong, force page reload as fallback
+                window.location.reload();
             }
-            
-            document.getElementById('scanner-section').style.display = 'block';
-            document.getElementById('player-section').style.display = 'none';
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('status').style.display = 'none';
-            
-            const readerDiv = document.getElementById('reader');
-            readerDiv.innerHTML = '';
-            
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader",
-                { 
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0,
-                    defaultInputByUser: true
-                },
-                false
-            );
-            
-            html5QrcodeScanner.render(handleScan, handleError);
-            html5Qrcode = html5QrcodeScanner.getQrCode();
         }
 
         function stopPlayer() {
@@ -259,7 +268,13 @@
         async function handleNextSong() {
             stopPlayer();
             currentUrl = null;
-            await startScanner();
+            
+            try {
+                await startScanner();
+            } catch (error) {
+                // If cleanup fails, force page reload
+                window.location.reload();
+            }
         }
 
         document.getElementById('playPauseBtn').addEventListener('click', () => {
@@ -291,6 +306,7 @@
 
         document.getElementById('nextBtn').addEventListener('click', handleNextSong);
 
+        // Initialize app
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showCameraStatus('Camera not available on this device');
         } else {
@@ -308,10 +324,10 @@
             stopPlayer();
             startScanner();
         });
-        
+
         window.addEventListener('beforeunload', async () => {
-            if (html5Qrcode) {
-                await html5Qrcode.stop();
+            if (html5QrcodeScanner) {
+                await html5QrcodeScanner.clear();
             }
         });
     </script>
