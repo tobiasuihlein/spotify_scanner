@@ -77,6 +77,7 @@
 </head>
 <body>
     <div class="container">
+        <h1>Spotify Preview Scanner</h1>
         
         <div id="reader" class="hidden"></div>
         
@@ -152,16 +153,23 @@
                 }
             }
 
-            onScanSuccess(previewUrl) {
-                // Validate that the scanned URL is a Spotify preview URL
-                if (!previewUrl.includes('audio-preview')) {
-                    this.errorMessage.textContent = 'Invalid QR code - not a Spotify preview URL';
-                    return;
-                }
+            onScanSuccess(scannedUrl) {
+                try {
+                    // Parse the URL to validate it
+                    const url = new URL(scannedUrl);
+                    
+                    // Check if it's a Spotify preview URL (either mp3-preview or audio-preview)
+                    if (!url.hostname.includes('scdn.co') || !url.pathname.includes('preview')) {
+                        this.errorMessage.textContent = 'Invalid QR code - not a Spotify preview URL';
+                        return;
+                    }
 
-                this.stopScanning();
-                this.playAudio(previewUrl);
-                this.nowPlaying.classList.remove('hidden');
+                    this.stopScanning();
+                    this.playAudio(scannedUrl);
+                    this.nowPlaying.classList.remove('hidden');
+                } catch (error) {
+                    this.errorMessage.textContent = 'Invalid URL format';
+                }
             }
 
             onScanError(error) {
