@@ -3,352 +3,184 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Preview Player</title>
-    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <title>Spotify Preview Scanner</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body {
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            background-color: #f5f5f5;
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #121212;
+            color: white;
         }
 
         .container {
-            height: 100vh;
-            width: 100vw;
-        }
-
-        #interactive.viewport {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-
-        #interactive.viewport video, #interactive.viewport canvas {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        #overlay {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 250px;
-            height: 250px;
-            border: 2px solid #1DB954;
-            border-radius: 12px;
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        #status {
-            position: fixed;
-            top: 16px;
-            left: 16px;
-            right: 16px;
-            padding: 12px;
-            border-radius: 8px;
-            display: none;
-            color: #c62828;
-            background: #ffebee;
-            text-align: center;
-            z-index: 1000;
-        }
-
-        .loading {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #666;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            z-index: 1000;
-        }
-
-        .player-section {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: #f5f5f5;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .player-controls {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 32px;
+            gap: 20px;
         }
 
-        .timer {
-            font-size: 32px;
-            font-weight: bold;
-            color: #333;
+        #reader {
+            width: 100%;
+            max-width: 600px;
+            background: #282828;
+            border-radius: 8px;
+            overflow: hidden;
         }
 
-        .play-pause-btn {
-            width: 96px;
-            height: 96px;
-            border-radius: 50%;
-            border: none;
-            background: #1DB954;
-            color: white;
-            cursor: pointer;
+        .controls {
             display: flex;
-            align-items: center;
-            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
         }
 
-        .next-btn {
+        button {
             background: #1DB954;
-            color: white;
             border: none;
-            padding: 16px 32px;
-            border-radius: 24px;
-            font-size: 18px;
+            padding: 12px 24px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
             cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
+        }
+
+        .now-playing {
+            text-align: center;
+            padding: 20px;
+            background: #282828;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #errorMessage {
+            color: #ff4444;
+            text-align: center;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="status"></div>
-        <div id="loading" class="loading">Loading preview...</div>
         
-        <div id="scanner-section">
-            <div id="interactive" class="viewport"></div>
-            <div id="overlay"></div>
+        <div id="reader" class="hidden"></div>
+        
+        <div class="now-playing hidden">
+            <h2>Now Playing</h2>
+            <audio id="audioPlayer" controls></audio>
         </div>
 
-        <div id="player-section" class="player-section">
-            <div class="player-controls">
-                <div class="timer">0:30</div>
-                <button class="play-pause-btn" id="playPauseBtn">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                </button>
-                <button class="next-btn" id="nextBtn">Next Song</button>
-                <audio id="audio-player" preload="auto"></audio>
-            </div>
+        <div class="controls">
+            <button id="startButton">Start Scanning</button>
+            <button id="nextButton" disabled>Next Song</button>
         </div>
+
+        <div id="errorMessage"></div>
     </div>
 
     <script>
-        let codeReader;
-        let countdown = null;
-        let isPlaying = false;
-        let currentUrl = null;
-        let isScanning = false;
-
-        function showStatus(message) {
-            console.log('Status:', message);
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.style.display = 'block';
-            setTimeout(() => status.style.display = 'none', 3000);
-        }
-
-        function updateTimer(seconds) {
-            const timer = document.querySelector('.timer');
-            timer.textContent = `0:${Math.max(0, seconds).toString().padStart(2, '0')}`;
-        }
-
-        function togglePlayPauseIcon(playing) {
-            const btn = document.getElementById('playPauseBtn');
-            btn.innerHTML = playing ? 
-                '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>' :
-                '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
-        }
-
-        async function startScanner() {
-            if (isScanning) return;
-            
-            document.getElementById('scanner-section').style.display = 'block';
-            document.getElementById('player-section').style.display = 'none';
-            document.getElementById('loading').style.display = 'none';
-
-            try {
-                codeReader = new ZXing.BrowserMultiFormatReader();
-                isScanning = true;
-
-                const constraints = {
-                    video: { facingMode: 'environment' }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                const videoElement = document.createElement('video');
-                videoElement.srcObject = stream;
-                const viewport = document.getElementById('interactive');
-                viewport.innerHTML = '';
-                viewport.appendChild(videoElement);
-                videoElement.play();
-
-                // Start continuous scanning
-                async function scan() {
-                    if (!isScanning) return;
-                    
-                    try {
-                        const result = await codeReader.decodeOnceFromVideoElement(videoElement);
-                        if (result) {
-                            console.log('Scanned:', result.text);
-                            handleScan(result.text);
-                        }
-                    } catch (error) {
-                        // Ignore errors and continue scanning
-                    }
-
-                    if (isScanning) {
-                        requestAnimationFrame(scan);
-                    }
-                }
-
-                scan();
-
-            } catch (error) {
-                console.error('Scanner error:', error);
-                showStatus('Failed to start camera');
-            }
-        }
-
-        function stopScanner() {
-            isScanning = false;
-            if (codeReader) {
-                codeReader.reset();
-            }
-            const viewport = document.getElementById('interactive');
-            viewport.innerHTML = '';
-        }
-
-        function stopPlayer() {
-            const player = document.getElementById('audio-player');
-            player.pause();
-            player.currentTime = 0;
-            player.src = '';
-            if (countdown) {
-                clearInterval(countdown);
-                countdown = null;
-            }
-            isPlaying = false;
-            togglePlayPauseIcon(false);
-        }
-
-        async function handleScan(decodedText) {
-            console.log('Handling scan:', decodedText);
-            
-            if (!decodedText.startsWith('https://p.scdn.co/mp3-preview/')) {
-                showStatus('Invalid preview URL');
-                return;
+        class SpotifyScanner {
+            constructor() {
+                this.html5QrcodeScanner = null;
+                this.audioPlayer = document.getElementById('audioPlayer');
+                this.reader = document.getElementById('reader');
+                this.startButton = document.getElementById('startButton');
+                this.nextButton = document.getElementById('nextButton');
+                this.nowPlaying = document.querySelector('.now-playing');
+                this.errorMessage = document.getElementById('errorMessage');
+                
+                this.setupEventListeners();
             }
 
-            if (decodedText === currentUrl) return;
-
-            currentUrl = decodedText;
-            const player = document.getElementById('audio-player');
-            
-            stopPlayer();
-            stopScanner();
-            
-            document.getElementById('scanner-section').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-
-            try {
-                player.src = decodedText;
-                await player.load();
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('player-section').style.display = 'flex';
-                startPlayback();
-            } catch (error) {
-                console.error('Audio error:', error);
-                showStatus('Error loading audio');
-                startScanner();
-            }
-        }
-
-        function startPlayback() {
-            const player = document.getElementById('audio-player');
-            updateTimer(30);
-            if (countdown) clearInterval(countdown);
-            
-            countdown = setInterval(() => {
-                const timeLeft = 30 - Math.floor(player.currentTime);
-                updateTimer(timeLeft);
-                if (timeLeft <= 0) stopPlayer();
-            }, 100);
-            
-            player.play()
-                .then(() => {
-                    isPlaying = true;
-                    togglePlayPauseIcon(true);
-                })
-                .catch(() => {
-                    showStatus('Error playing audio');
-                    stopPlayer();
+            setupEventListeners() {
+                this.startButton.addEventListener('click', () => this.toggleScanner());
+                this.nextButton.addEventListener('click', () => this.startScanning());
+                this.audioPlayer.addEventListener('ended', () => {
+                    this.nextButton.disabled = false;
                 });
-        }
+            }
 
-        document.getElementById('playPauseBtn').addEventListener('click', () => {
-            const player = document.getElementById('audio-player');
-            if (player.paused) {
-                player.play();
-                isPlaying = true;
-                togglePlayPauseIcon(true);
-                if (!countdown) {
-                    countdown = setInterval(() => {
-                        const timeLeft = 30 - Math.floor(player.currentTime);
-                        updateTimer(timeLeft);
-                        if (timeLeft <= 0) stopPlayer();
-                    }, 100);
-                }
-            } else {
-                player.pause();
-                isPlaying = false;
-                togglePlayPauseIcon(false);
-                if (countdown) {
-                    clearInterval(countdown);
-                    countdown = null;
+            toggleScanner() {
+                if (this.html5QrcodeScanner) {
+                    this.stopScanning();
+                } else {
+                    this.startScanning();
                 }
             }
-        });
 
-        document.getElementById('nextBtn').addEventListener('click', () => {
-            stopPlayer();
-            currentUrl = null;
-            startScanner();
-        });
+            startScanning() {
+                this.reader.classList.remove('hidden');
+                this.startButton.textContent = 'Stop Scanning';
+                this.nextButton.disabled = true;
+                this.errorMessage.textContent = '';
 
-        const player = document.getElementById('audio-player');
-        
-        player.addEventListener('ended', () => {
-            stopPlayer();
-            updateTimer(0);
-        });
+                this.html5QrcodeScanner = new Html5Qrcode("reader");
+                
+                this.html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    {
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 }
+                    },
+                    this.onScanSuccess.bind(this),
+                    this.onScanError.bind(this)
+                );
+            }
 
-        player.addEventListener('error', () => {
-            showStatus('Error playing audio');
-            stopPlayer();
-            startScanner();
-        });
+            stopScanning() {
+                if (this.html5QrcodeScanner) {
+                    this.html5QrcodeScanner.stop().then(() => {
+                        this.html5QrcodeScanner = null;
+                        this.reader.classList.add('hidden');
+                        this.startButton.textContent = 'Start Scanning';
+                    });
+                }
+            }
 
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            startScanner();
-        } else {
-            showStatus('Camera not available');
+            onScanSuccess(previewUrl) {
+                // Validate that the scanned URL is a Spotify preview URL
+                if (!previewUrl.includes('audio-preview')) {
+                    this.errorMessage.textContent = 'Invalid QR code - not a Spotify preview URL';
+                    return;
+                }
+
+                this.stopScanning();
+                this.playAudio(previewUrl);
+                this.nowPlaying.classList.remove('hidden');
+            }
+
+            onScanError(error) {
+                // We don't need to show QR scanning errors
+                console.log(error);
+            }
+
+            playAudio(previewUrl) {
+                this.audioPlayer.src = previewUrl;
+                this.audioPlayer.play().catch(error => {
+                    this.errorMessage.textContent = 'Error playing audio: ' + error.message;
+                });
+            }
         }
+
+        // Initialize the scanner when the page loads
+        window.addEventListener('load', () => {
+            new SpotifyScanner();
+        });
     </script>
 </body>
 </html>
