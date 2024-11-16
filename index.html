@@ -92,12 +92,19 @@
         audio {
             display: none;
         }
+
+        .loading {
+            display: none;
+            margin: 20px 0;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="camera-status"></div>
         <div id="status"></div>
+        <div id="loading" class="loading">Loading preview...</div>
         
         <div id="scanner-section">
             <div id="reader"></div>
@@ -111,13 +118,16 @@
                 </svg>
             </button>
             <button class="next-btn" id="nextBtn">Next Song</button>
-            <audio id="audio-player"></audio>
+            <audio id="audio-player" preload="auto"></audio>
         </div>
     </div>
 
     <script>
         let html5QrcodeScanner = null;
         let countdown = null;
+        let startTime = null;
+        let isPlaying = false;
+        let currentUrl = null;
 
         function showStatus(message) {
             const status = document.getElementById('status');
@@ -133,12 +143,12 @@
 
         function updateTimer(seconds) {
             const timer = document.querySelector('.timer');
-            timer.textContent = `0:${seconds.toString().padStart(2, '0')}`;
+            timer.textContent = `0:${Math.max(0, seconds).toString().padStart(2, '0')}`;
         }
 
-        function togglePlayPauseIcon(isPlaying) {
+        function togglePlayPauseIcon(playing) {
             const btn = document.getElementById('playPauseBtn');
-            btn.innerHTML = isPlaying ? 
+            btn.innerHTML = playing ? 
                 '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>' :
                 '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
         }
@@ -146,40 +156,86 @@
         function startScanner() {
             document.getElementById('scanner-section').style.display = 'block';
             document.getElementById('player-section').style.display = 'none';
+            document.getElementById('loading').style.display = 'none';
             
             if (html5QrcodeScanner) {
                 html5QrcodeScanner.render(handleScan, handleError);
             }
         }
 
-        function handleScan(decodedText) {
+        function stopPlayer() {
+            const player = document.getElementById('audio-player');
+            player.pause();
+            player.currentTime = 0;
+            if (countdown) {
+                clearInterval(countdown);
+                countdown = null;
+            }
+            isPlaying = false;
+            togglePlayPauseIcon(false);
+        }
+
+        async function handleScan(decodedText) {
             if (!decodedText.startsWith('https://p.scdn.co/mp3-preview/')) {
                 showStatus('Invalid preview URL');
                 return;
             }
-            
+
+            if (decodedText === currentUrl) {
+                return; // Avoid reloading the same URL
+            }
+
+            currentUrl = decodedText;
             const player = document.getElementById('audio-player');
-            player.src = decodedText;
             
-            // Hide scanner, show player
+            // Stop current playback and reset
+            stopPlayer();
+            
+            // Hide scanner, show loading
             document.getElementById('scanner-section').style.display = 'none';
-            document.getElementById('player-section').style.display = 'flex';
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                // Load the audio
+                player.src = decodedText;
+                await player.load();
+
+                // Hide loading, show player
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('player-section').style.display = 'flex';
+                
+                // Start playback
+                startPlayback();
+            } catch (error) {
+                showStatus('Error loading audio preview');
+                startScanner();
+            }
+        }
+
+        function startPlayback() {
+            const player = document.getElementById('audio-player');
             
             // Reset and start timer
-            let timeLeft = 30;
-            updateTimer(timeLeft);
+            updateTimer(30);
             if (countdown) clearInterval(countdown);
             
             countdown = setInterval(() => {
-                timeLeft--;
+                const timeLeft = 30 - Math.floor(player.currentTime);
                 updateTimer(timeLeft);
                 if (timeLeft <= 0) {
-                    clearInterval(countdown);
+                    stopPlayer();
                 }
-            }, 1000);
+            }, 100);
             
-            player.play();
-            togglePlayPauseIcon(true);
+            player.play()
+                .then(() => {
+                    isPlaying = true;
+                    togglePlayPauseIcon(true);
+                })
+                .catch(error => {
+                    showStatus('Error playing audio');
+                    stopPlayer();
+                });
         }
 
         function handleError(err) {
@@ -191,17 +247,32 @@
             const player = document.getElementById('audio-player');
             if (player.paused) {
                 player.play();
+                isPlaying = true;
                 togglePlayPauseIcon(true);
+                
+                if (!countdown) {
+                    countdown = setInterval(() => {
+                        const timeLeft = 30 - Math.floor(player.currentTime);
+                        updateTimer(timeLeft);
+                        if (timeLeft <= 0) {
+                            stopPlayer();
+                        }
+                    }, 100);
+                }
             } else {
                 player.pause();
+                isPlaying = false;
                 togglePlayPauseIcon(false);
+                if (countdown) {
+                    clearInterval(countdown);
+                    countdown = null;
+                }
             }
         });
 
         document.getElementById('nextBtn').addEventListener('click', () => {
-            const player = document.getElementById('audio-player');
-            player.pause();
-            if (countdown) clearInterval(countdown);
+            stopPlayer();
+            currentUrl = null;
             startScanner();
         });
 
@@ -215,7 +286,7 @@
                     fps: 10,
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0,
-                    defaultInputByUser: true // This will prefer the back camera
+                    defaultInputByUser: true
                 }
             );
             startScanner();
@@ -224,9 +295,14 @@
         // Handle audio player events
         const player = document.getElementById('audio-player');
         player.addEventListener('ended', () => {
-            if (countdown) clearInterval(countdown);
+            stopPlayer();
             updateTimer(0);
-            togglePlayPauseIcon(false);
+        });
+
+        player.addEventListener('error', () => {
+            showStatus('Error playing audio preview');
+            stopPlayer();
+            startScanner();
         });
     </script>
 </body>
