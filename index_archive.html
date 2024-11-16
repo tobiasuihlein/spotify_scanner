@@ -4,72 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preview Player</title>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             min-height: 100vh;
             background-color: #f5f5f5;
         }
 
         .container {
+            max-width: 400px;
             width: 100%;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #scanner-section {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+            text-align: center;
         }
 
         #reader {
-            flex: 1;
-            position: relative;
-            min-height: 300px;
-        }
-
-        #video {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            margin-bottom: 20px;
         }
 
         #camera-status {
             background: #fff3cd;
             color: #856404;
             padding: 12px;
-            margin: 16px;
             border-radius: 8px;
+            margin-bottom: 20px;
             display: none;
-        }
-
-        .player-section {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: #f5f5f5;
-            justify-content: center;
-            align-items: center;
         }
 
         .player-controls {
-            display: flex;
+            display: none;
             flex-direction: column;
             align-items: center;
-            gap: 32px;
+            gap: 20px;
+            padding: 20px;
         }
 
         .play-pause-btn {
-            width: 96px;
-            height: 96px;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
             border: none;
             background: #1DB954;
@@ -85,13 +63,8 @@
             transform: scale(0.95);
         }
 
-        .play-pause-btn svg {
-            width: 36px;
-            height: 36px;
-        }
-
         .timer {
-            font-size: 32px;
+            font-size: 24px;
             font-weight: bold;
             color: #333;
         }
@@ -100,36 +73,30 @@
             background: #1DB954;
             color: white;
             border: none;
-            padding: 16px 32px;
+            padding: 12px 24px;
             border-radius: 24px;
-            font-size: 18px;
+            font-size: 16px;
             cursor: pointer;
+            margin-top: 20px;
         }
 
         #status {
-            position: fixed;
-            top: 16px;
-            left: 16px;
-            right: 16px;
+            margin: 16px 0;
             padding: 12px;
             border-radius: 8px;
             display: none;
             color: #c62828;
             background: #ffebee;
-            text-align: center;
+        }
+
+        audio {
+            display: none;
         }
 
         .loading {
             display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            margin: 20px 0;
             color: #666;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
     </style>
 </head>
@@ -140,27 +107,23 @@
         <div id="loading" class="loading">Loading preview...</div>
         
         <div id="scanner-section">
-            <div id="reader">
-                <video id="video"></video>
-            </div>
+            <div id="reader"></div>
         </div>
 
-        <div id="player-section" class="player-section">
-            <div class="player-controls">
-                <div class="timer">0:30</div>
-                <button class="play-pause-btn" id="playPauseBtn">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                    </svg>
-                </button>
-                <button class="next-btn" id="nextBtn">Next Song</button>
-                <audio id="audio-player" preload="auto"></audio>
-            </div>
+        <div id="player-section" class="player-controls">
+            <div class="timer">0:30</div>
+            <button class="play-pause-btn" id="playPauseBtn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            </button>
+            <button class="next-btn" id="nextBtn">Next Song</button>
+            <audio id="audio-player" preload="auto"></audio>
         </div>
     </div>
 
     <script>
-        let codeReader = null;
+        let html5QrcodeScanner = null;
         let countdown = null;
         let isPlaying = false;
         let currentUrl = null;
@@ -169,9 +132,6 @@
             const status = document.getElementById('status');
             status.textContent = message;
             status.style.display = 'block';
-            setTimeout(() => {
-                status.style.display = 'none';
-            }, 3000);
         }
 
         function showCameraStatus(message) {
@@ -188,52 +148,46 @@
         function togglePlayPauseIcon(playing) {
             const btn = document.getElementById('playPauseBtn');
             btn.innerHTML = playing ? 
-                '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>' :
-                '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>' :
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
         }
 
         async function startScanner() {
             try {
-                document.getElementById('scanner-section').style.display = 'flex';
+                // First, try to close any existing scanner
+                if (html5QrcodeScanner) {
+                    await html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                }
+
+                // Clear the reader div completely
+                const readerDiv = document.getElementById('reader');
+                readerDiv.innerHTML = '';
+                
+                // Show scanner section
+                document.getElementById('scanner-section').style.display = 'block';
                 document.getElementById('player-section').style.display = 'none';
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('status').style.display = 'none';
 
-                if (!codeReader) {
-                    codeReader = new ZXing.BrowserMultiFormatReader();
-                }
-
-                const videoElement = document.getElementById('video');
-                const constraints = {
-                    video: { facingMode: 'environment' }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElement.srcObject = stream;
-                videoElement.play();
-
-                codeReader.decodeFromVideoElement(videoElement, (result) => {
-                    if (result) {
-                        handleScan(result.text);
+                // Create new scanner instance
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "reader",
+                    { 
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 },
+                        aspectRatio: 1.0,
+                        defaultInputByUser: true
                     }
-                }, (error) => {
-                    // Ignore errors during scanning
-                });
+                );
+
+                // Render the scanner
+                await html5QrcodeScanner.render(handleScan, handleError);
 
             } catch (error) {
-                showCameraStatus('Failed to start camera. Please refresh the page.');
-                console.error(error);
-            }
-        }
-
-        function stopScanner() {
-            if (codeReader) {
-                codeReader.reset();
-                const videoElement = document.getElementById('video');
-                if (videoElement.srcObject) {
-                    videoElement.srcObject.getTracks().forEach(track => track.stop());
-                }
-                videoElement.srcObject = null;
+                console.error("Scanner reset error:", error);
+                // If something goes wrong, force page reload as fallback
+                window.location.reload();
             }
         }
 
@@ -264,7 +218,6 @@
             const player = document.getElementById('audio-player');
             
             stopPlayer();
-            stopScanner();
             
             document.getElementById('scanner-section').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
@@ -308,10 +261,20 @@
                 });
         }
 
+        function handleError(err) {
+            // Ignore scanning errors
+        }
+
         async function handleNextSong() {
             stopPlayer();
             currentUrl = null;
-            await startScanner();
+            
+            try {
+                await startScanner();
+            } catch (error) {
+                // If cleanup fails, force page reload
+                window.location.reload();
+            }
         }
 
         document.getElementById('playPauseBtn').addEventListener('click', () => {
@@ -343,6 +306,7 @@
 
         document.getElementById('nextBtn').addEventListener('click', handleNextSong);
 
+        // Initialize app
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showCameraStatus('Camera not available on this device');
         } else {
@@ -361,9 +325,10 @@
             startScanner();
         });
 
-        window.addEventListener('beforeunload', () => {
-            stopScanner();
-            stopPlayer();
+        window.addEventListener('beforeunload', async () => {
+            if (html5QrcodeScanner) {
+                await html5QrcodeScanner.clear();
+            }
         });
     </script>
 </body>
