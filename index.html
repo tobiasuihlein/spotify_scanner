@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Music Preview Scanner</title>
+    <title>Preview Player</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         body {
@@ -28,125 +28,205 @@
             margin-bottom: 20px;
         }
 
-        #player-card {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-top: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        #camera-status {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
             display: none;
         }
 
-        .status {
+        .player-controls {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .play-pause-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: none;
+            background: #1DB954;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+        }
+
+        .play-pause-btn:active {
+            transform: scale(0.95);
+        }
+
+        .timer {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .next-btn {
+            background: #1DB954;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #status {
             margin: 16px 0;
             padding: 12px;
             border-radius: 8px;
             display: none;
-        }
-
-        .status.error {
-            background: #ffebee;
             color: #c62828;
-        }
-
-        .status.success {
-            background: #e8f5e9;
-            color: #2e7d32;
+            background: #ffebee;
         }
 
         audio {
-            width: 100%;
-            margin-top: 8px;
-        }
-
-        .manual-input {
-            margin-top: 20px;
-        }
-
-        input {
-            width: 100%;
-            padding: 8px;
-            margin: 8px 0;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        button {
-            background: #1DB954;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Music Preview Scanner</h1>
-        <div id="reader"></div>
-        <div id="status" class="status"></div>
+        <div id="camera-status"></div>
+        <div id="status"></div>
         
-        <div id="player-card">
-            <audio id="audio-player" controls>
-                Your browser does not support the audio element.
-            </audio>
+        <div id="scanner-section">
+            <div id="reader"></div>
         </div>
 
-        <div class="manual-input">
-            <p>Or enter a preview URL manually:</p>
-            <input type="text" id="url-input" 
-                   placeholder="https://p.scdn.co/mp3-preview/...">
-            <button onclick="handleManualInput()">Play</button>
+        <div id="player-section" class="player-controls">
+            <div class="timer">0:30</div>
+            <button class="play-pause-btn" id="playPauseBtn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            </button>
+            <button class="next-btn" id="nextBtn">Next Song</button>
+            <audio id="audio-player"></audio>
         </div>
     </div>
 
     <script>
-        function showStatus(message, isError = false) {
+        let html5QrcodeScanner = null;
+        let countdown = null;
+
+        function showStatus(message) {
             const status = document.getElementById('status');
             status.textContent = message;
             status.style.display = 'block';
-            status.className = 'status ' + (isError ? 'error' : 'success');
         }
 
-        function playPreview(url) {
-            // Validate URL format
-            if (!url.startsWith('https://p.scdn.co/mp3-preview/')) {
-                showStatus('Invalid preview URL format', true);
+        function showCameraStatus(message) {
+            const status = document.getElementById('camera-status');
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+
+        function updateTimer(seconds) {
+            const timer = document.querySelector('.timer');
+            timer.textContent = `0:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function togglePlayPauseIcon(isPlaying) {
+            const btn = document.getElementById('playPauseBtn');
+            btn.innerHTML = isPlaying ? 
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>' :
+                '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+        }
+
+        function startScanner() {
+            document.getElementById('scanner-section').style.display = 'block';
+            document.getElementById('player-section').style.display = 'none';
+            
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.render(handleScan, handleError);
+            }
+        }
+
+        function handleScan(decodedText) {
+            if (!decodedText.startsWith('https://p.scdn.co/mp3-preview/')) {
+                showStatus('Invalid preview URL');
                 return;
             }
-
+            
             const player = document.getElementById('audio-player');
-            const playerCard = document.getElementById('player-card');
+            player.src = decodedText;
             
-            player.src = url;
-            playerCard.style.display = 'block';
+            // Hide scanner, show player
+            document.getElementById('scanner-section').style.display = 'none';
+            document.getElementById('player-section').style.display = 'flex';
             
-            player.play().catch(error => {
-                showStatus('Click play to start preview');
-            });
+            // Reset and start timer
+            let timeLeft = 30;
+            updateTimer(timeLeft);
+            if (countdown) clearInterval(countdown);
             
-            showStatus('Preview loaded successfully');
+            countdown = setInterval(() => {
+                timeLeft--;
+                updateTimer(timeLeft);
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                }
+            }, 1000);
+            
+            player.play();
+            togglePlayPauseIcon(true);
         }
 
-        function handleManualInput() {
-            const url = document.getElementById('url-input').value.trim();
-            playPreview(url);
+        function handleError(err) {
+            // Ignore scanning errors
         }
 
-        // Initialize QR Scanner
-        const html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader",
-            { 
-                fps: 10,
-                qrbox: { width: 250, height: 250 }
+        // Initialize audio player controls
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            const player = document.getElementById('audio-player');
+            if (player.paused) {
+                player.play();
+                togglePlayPauseIcon(true);
+            } else {
+                player.pause();
+                togglePlayPauseIcon(false);
             }
-        );
+        });
 
-        html5QrcodeScanner.render((decodedText) => {
-            playPreview(decodedText);
-        }, (error) => {
-            // Handle scan error (ignore)
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            const player = document.getElementById('audio-player');
+            player.pause();
+            if (countdown) clearInterval(countdown);
+            startScanner();
+        });
+
+        // Initialize scanner
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showCameraStatus('Camera not available on this device');
+        } else {
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader",
+                { 
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    defaultInputByUser: true // This will prefer the back camera
+                }
+            );
+            startScanner();
+        }
+
+        // Handle audio player events
+        const player = document.getElementById('audio-player');
+        player.addEventListener('ended', () => {
+            if (countdown) clearInterval(countdown);
+            updateTimer(0);
+            togglePlayPauseIcon(false);
         });
     </script>
 </body>
