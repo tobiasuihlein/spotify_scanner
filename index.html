@@ -149,6 +149,7 @@
         let currentUrl = null;
 
         function showStatus(message) {
+            console.log('Status:', message); // Debug log
             const status = document.getElementById('status');
             status.textContent = message;
             status.style.display = 'block';
@@ -178,45 +179,39 @@
                 await codeReader.decodeFromInputVideoDevice(undefined, 'video')
                     .then((result) => {
                         if (result) {
+                            console.log('Scanned:', result.text); // Debug log
                             handleScan(result.text);
                         }
                     })
                     .catch((err) => {
-                        console.error(err);
+                        console.error('Scanning error:', err);
                     });
             } catch (err) {
                 showStatus('Failed to start camera');
-                console.error(err);
+                console.error('Camera error:', err);
             }
-        }
-
-        function stopScanner() {
-            if (codeReader) {
-                codeReader.reset();
-                codeReader = undefined;
-            }
-        }
-
-        function stopPlayer() {
-            const player = document.getElementById('audio-player');
-            player.pause();
-            player.currentTime = 0;
-            player.src = '';
-            if (countdown) {
-                clearInterval(countdown);
-                countdown = null;
-            }
-            isPlaying = false;
-            togglePlayPauseIcon(false);
         }
 
         async function handleScan(decodedText) {
+            console.log('Handling scan:', decodedText); // Debug log
+            
+            // Check if it's a Spotify track URL or URI
+            if (decodedText.includes('spotify:track:') || decodedText.includes('open.spotify.com/track/')) {
+                console.log('Detected Spotify URL/URI'); // Debug log
+                showStatus('Spotify links are not supported directly. Please scan a preview URL.');
+                return;
+            }
+
             if (!decodedText.startsWith('https://p.scdn.co/mp3-preview/')) {
+                console.log('Invalid URL format:', decodedText); // Debug log
                 showStatus('Invalid preview URL');
                 return;
             }
 
-            if (decodedText === currentUrl) return;
+            if (decodedText === currentUrl) {
+                console.log('Same URL as current'); // Debug log
+                return;
+            }
 
             currentUrl = decodedText;
             const player = document.getElementById('audio-player');
@@ -228,12 +223,27 @@
             document.getElementById('loading').style.display = 'block';
 
             try {
+                console.log('Loading audio:', currentUrl); // Debug log
                 player.src = decodedText;
+                
+                // Add event listener for successful loading
+                player.oncanplaythrough = () => {
+                    console.log('Audio loaded successfully'); // Debug log
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('player-section').style.display = 'flex';
+                    startPlayback();
+                };
+
+                // Add event listener for loading error
+                player.onerror = (e) => {
+                    console.error('Audio loading error:', e); // Debug log
+                    showStatus('Error loading audio');
+                    startScanner();
+                };
+
                 await player.load();
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('player-section').style.display = 'flex';
-                startPlayback();
             } catch (error) {
+                console.error('Audio error:', error); // Debug log
                 showStatus('Error loading audio');
                 startScanner();
             }
@@ -252,10 +262,12 @@
             
             player.play()
                 .then(() => {
+                    console.log('Playback started'); // Debug log
                     isPlaying = true;
                     togglePlayPauseIcon(true);
                 })
-                .catch(() => {
+                .catch((error) => {
+                    console.error('Playback error:', error); // Debug log
                     showStatus('Error playing audio');
                     stopPlayer();
                 });
