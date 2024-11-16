@@ -125,9 +125,9 @@
     <script>
         let html5QrcodeScanner = null;
         let countdown = null;
-        let startTime = null;
         let isPlaying = false;
         let currentUrl = null;
+        let html5Qrcode = null;
 
         function showStatus(message) {
             const status = document.getElementById('status');
@@ -153,20 +153,40 @@
                 '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
         }
 
-        function startScanner() {
+        async function startScanner() {
+            if (html5Qrcode) {
+                await html5Qrcode.stop();
+                html5Qrcode = null;
+            }
+            
             document.getElementById('scanner-section').style.display = 'block';
             document.getElementById('player-section').style.display = 'none';
             document.getElementById('loading').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
             
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.render(handleScan, handleError);
-            }
+            const readerDiv = document.getElementById('reader');
+            readerDiv.innerHTML = '';
+            
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader",
+                { 
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                    defaultInputByUser: true
+                },
+                false
+            );
+            
+            html5QrcodeScanner.render(handleScan, handleError);
+            html5Qrcode = html5QrcodeScanner.getQrCode();
         }
 
         function stopPlayer() {
             const player = document.getElementById('audio-player');
             player.pause();
             player.currentTime = 0;
+            player.src = '';
             if (countdown) {
                 clearInterval(countdown);
                 countdown = null;
@@ -182,29 +202,24 @@
             }
 
             if (decodedText === currentUrl) {
-                return; // Avoid reloading the same URL
+                return;
             }
 
             currentUrl = decodedText;
             const player = document.getElementById('audio-player');
             
-            // Stop current playback and reset
             stopPlayer();
             
-            // Hide scanner, show loading
             document.getElementById('scanner-section').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
 
             try {
-                // Load the audio
                 player.src = decodedText;
                 await player.load();
 
-                // Hide loading, show player
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('player-section').style.display = 'flex';
                 
-                // Start playback
                 startPlayback();
             } catch (error) {
                 showStatus('Error loading audio preview');
@@ -215,7 +230,6 @@
         function startPlayback() {
             const player = document.getElementById('audio-player');
             
-            // Reset and start timer
             updateTimer(30);
             if (countdown) clearInterval(countdown);
             
@@ -242,7 +256,12 @@
             // Ignore scanning errors
         }
 
-        // Initialize audio player controls
+        async function handleNextSong() {
+            stopPlayer();
+            currentUrl = null;
+            await startScanner();
+        }
+
         document.getElementById('playPauseBtn').addEventListener('click', () => {
             const player = document.getElementById('audio-player');
             if (player.paused) {
@@ -270,29 +289,14 @@
             }
         });
 
-        document.getElementById('nextBtn').addEventListener('click', () => {
-            stopPlayer();
-            currentUrl = null;
-            startScanner();
-        });
+        document.getElementById('nextBtn').addEventListener('click', handleNextSong);
 
-        // Initialize scanner
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showCameraStatus('Camera not available on this device');
         } else {
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader",
-                { 
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0,
-                    defaultInputByUser: true
-                }
-            );
             startScanner();
         }
 
-        // Handle audio player events
         const player = document.getElementById('audio-player');
         player.addEventListener('ended', () => {
             stopPlayer();
@@ -303,6 +307,12 @@
             showStatus('Error playing audio preview');
             stopPlayer();
             startScanner();
+        });
+        
+        window.addEventListener('beforeunload', async () => {
+            if (html5Qrcode) {
+                await html5Qrcode.stop();
+            }
         });
     </script>
 </body>
