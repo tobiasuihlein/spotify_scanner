@@ -147,6 +147,8 @@
         let countdown = null;
         let isPlaying = false;
         let currentUrl = null;
+        let scannerActive = false;
+
 
         function showStatus(message) {
             const status = document.getElementById('status');
@@ -169,6 +171,7 @@
 
         async function startScanner() {
             try {
+                scannerActive = true;
                 document.getElementById('scanner-section').style.display = 'block';
                 document.getElementById('player-section').style.display = 'none';
                 document.getElementById('loading').style.display = 'none';
@@ -182,27 +185,36 @@
                 video.srcObject = stream;
                 await video.play();
 
-                const hints = new Map();
-                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
-                const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+                const codeReader = new ZXing.BrowserMultiFormatReader();
                 
-                async function scanFrame() {
-                    if (!videoStream) return;
-                    try {
-                        const result = await codeReader.decodeOnceFromVideoElement(video);
-                        if (result) handleScan(result.text);
-                    } catch (error) {
-                        requestAnimationFrame(scanFrame);
-                    }
+                function scanFrame() {
+                    if (!scannerActive) return;
+
+                    codeReader.decodeOnceFromVideoElement(video)
+                        .then(result => {
+                            if (result && result.text) {
+                                handleScan(result.text);
+                            }
+                        })
+                        .catch(() => {
+                            // Ignore errors
+                        })
+                        .finally(() => {
+                            if (scannerActive) {
+                                requestAnimationFrame(scanFrame);
+                            }
+                        });
                 }
 
                 scanFrame();
             } catch (error) {
                 showStatus('Camera error. Please refresh.');
+                console.error(error);
             }
         }
 
         function stopScanner() {
+            scannerActive = false;
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
                 videoStream = null;
