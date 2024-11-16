@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preview Player</title>
-    <script src="https://unpkg.com/@zxing/library@0.19.1"></script>
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -143,12 +143,10 @@
     </div>
 
     <script>
-        let videoStream = null;
+        let codeReader;
         let countdown = null;
         let isPlaying = false;
         let currentUrl = null;
-        let scannerActive = false;
-
 
         function showStatus(message) {
             const status = document.getElementById('status');
@@ -170,56 +168,33 @@
         }
 
         async function startScanner() {
+            document.getElementById('scanner-section').style.display = 'block';
+            document.getElementById('player-section').style.display = 'none';
+            document.getElementById('loading').style.display = 'none';
+
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            
             try {
-                scannerActive = true;
-                document.getElementById('scanner-section').style.display = 'block';
-                document.getElementById('player-section').style.display = 'none';
-                document.getElementById('loading').style.display = 'none';
-
-                const video = document.getElementById('video');
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
-                
-                videoStream = stream;
-                video.srcObject = stream;
-                await video.play();
-
-                const codeReader = new ZXing.BrowserMultiFormatReader();
-                
-                function scanFrame() {
-                    if (!scannerActive) return;
-
-                    codeReader.decodeOnceFromVideoElement(video)
-                        .then(result => {
-                            if (result && result.text) {
-                                handleScan(result.text);
-                            }
-                        })
-                        .catch(() => {
-                            // Ignore errors
-                        })
-                        .finally(() => {
-                            if (scannerActive) {
-                                requestAnimationFrame(scanFrame);
-                            }
-                        });
-                }
-
-                scanFrame();
-            } catch (error) {
-                showStatus('Camera error. Please refresh.');
-                console.error(error);
+                await codeReader.decodeFromInputVideoDevice(undefined, 'video')
+                    .then((result) => {
+                        if (result) {
+                            handleScan(result.text);
+                        }
+                    })
+                    .catch((err) => {
+                        console.error(err);
+                    });
+            } catch (err) {
+                showStatus('Failed to start camera');
+                console.error(err);
             }
         }
 
         function stopScanner() {
-            scannerActive = false;
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
+            if (codeReader) {
+                codeReader.reset();
+                codeReader = undefined;
             }
-            document.getElementById('video').srcObject = null;
         }
 
         function stopPlayer() {
