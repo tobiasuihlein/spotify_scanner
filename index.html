@@ -4,106 +4,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preview Player</title>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script src="https://unpkg.com/@zxing/library@0.19.1"></script>
     <style>
         body {
-            font-family: system-ui, -apple-system, sans-serif;
             margin: 0;
             padding: 0;
             min-height: 100vh;
             background-color: #f5f5f5;
+            font-family: system-ui, -apple-system, sans-serif;
         }
 
         .container {
-            width: 100%;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
         }
 
-        #scanner-section {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #reader {
-            flex: 1;
-            position: relative;
-            min-height: 300px;
-        }
-
-        #video {
-            width: 100%;
-            height: 100%;
+        video {
+            width: 100vw;
+            height: 100vh;
             object-fit: cover;
-        }
-
-        #camera-status {
-            background: #fff3cd;
-            color: #856404;
-            padding: 12px;
-            margin: 16px;
-            border-radius: 8px;
-            display: none;
-        }
-
-        .player-section {
-            display: none;
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background: #f5f5f5;
-            justify-content: center;
-            align-items: center;
         }
 
-        .player-controls {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 32px;
-        }
-
-        .play-pause-btn {
-            width: 96px;
-            height: 96px;
-            border-radius: 50%;
-            border: none;
-            background: #1DB954;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.1s;
-        }
-
-        .play-pause-btn:active {
-            transform: scale(0.95);
-        }
-
-        .play-pause-btn svg {
-            width: 36px;
-            height: 36px;
-        }
-
-        .timer {
-            font-size: 32px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .next-btn {
-            background: #1DB954;
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            border-radius: 24px;
-            font-size: 18px;
-            cursor: pointer;
+        #overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 2px solid #1DB954;
+            border-radius: 12px;
+            pointer-events: none;
         }
 
         #status {
@@ -117,6 +51,7 @@
             color: #c62828;
             background: #ffebee;
             text-align: center;
+            z-index: 1000;
         }
 
         .loading {
@@ -130,19 +65,67 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .player-section {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f5f5f5;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .player-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .timer {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .play-pause-btn {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            border: none;
+            background: #1DB954;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .next-btn {
+            background: #1DB954;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 24px;
+            font-size: 18px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="camera-status"></div>
         <div id="status"></div>
         <div id="loading" class="loading">Loading preview...</div>
         
         <div id="scanner-section">
-            <div id="reader">
-                <video id="video"></video>
-            </div>
+            <video id="video"></video>
+            <div id="overlay"></div>
         </div>
 
         <div id="player-section" class="player-section">
@@ -160,7 +143,7 @@
     </div>
 
     <script>
-        let codeReader = null;
+        let videoStream = null;
         let countdown = null;
         let isPlaying = false;
         let currentUrl = null;
@@ -169,15 +152,7 @@
             const status = document.getElementById('status');
             status.textContent = message;
             status.style.display = 'block';
-            setTimeout(() => {
-                status.style.display = 'none';
-            }, 3000);
-        }
-
-        function showCameraStatus(message) {
-            const status = document.getElementById('camera-status');
-            status.textContent = message;
-            status.style.display = 'block';
+            setTimeout(() => status.style.display = 'none', 3000);
         }
 
         function updateTimer(seconds) {
@@ -194,47 +169,45 @@
 
         async function startScanner() {
             try {
-                document.getElementById('scanner-section').style.display = 'flex';
+                document.getElementById('scanner-section').style.display = 'block';
                 document.getElementById('player-section').style.display = 'none';
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('status').style.display = 'none';
 
-                if (!codeReader) {
-                    codeReader = new ZXing.BrowserMultiFormatReader();
+                const video = document.getElementById('video');
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                
+                videoStream = stream;
+                video.srcObject = stream;
+                await video.play();
+
+                const hints = new Map();
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+                const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+                
+                async function scanFrame() {
+                    if (!videoStream) return;
+                    try {
+                        const result = await codeReader.decodeOnceFromVideoElement(video);
+                        if (result) handleScan(result.text);
+                    } catch (error) {
+                        requestAnimationFrame(scanFrame);
+                    }
                 }
 
-                const videoElement = document.getElementById('video');
-                const constraints = {
-                    video: { facingMode: 'environment' }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElement.srcObject = stream;
-                videoElement.play();
-
-                codeReader.decodeFromVideoElement(videoElement, (result) => {
-                    if (result) {
-                        handleScan(result.text);
-                    }
-                }, (error) => {
-                    // Ignore errors during scanning
-                });
-
+                scanFrame();
             } catch (error) {
-                showCameraStatus('Failed to start camera. Please refresh the page.');
-                console.error(error);
+                showStatus('Camera error. Please refresh.');
             }
         }
 
         function stopScanner() {
-            if (codeReader) {
-                codeReader.reset();
-                const videoElement = document.getElementById('video');
-                if (videoElement.srcObject) {
-                    videoElement.srcObject.getTracks().forEach(track => track.stop());
-                }
-                videoElement.srcObject = null;
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
             }
+            document.getElementById('video').srcObject = null;
         }
 
         function stopPlayer() {
@@ -256,9 +229,7 @@
                 return;
             }
 
-            if (decodedText === currentUrl) {
-                return;
-            }
+            if (decodedText === currentUrl) return;
 
             currentUrl = decodedText;
             const player = document.getElementById('audio-player');
@@ -272,29 +243,24 @@
             try {
                 player.src = decodedText;
                 await player.load();
-
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('player-section').style.display = 'flex';
-                
                 startPlayback();
             } catch (error) {
-                showStatus('Error loading audio preview');
+                showStatus('Error loading audio');
                 startScanner();
             }
         }
 
         function startPlayback() {
             const player = document.getElementById('audio-player');
-            
             updateTimer(30);
             if (countdown) clearInterval(countdown);
             
             countdown = setInterval(() => {
                 const timeLeft = 30 - Math.floor(player.currentTime);
                 updateTimer(timeLeft);
-                if (timeLeft <= 0) {
-                    stopPlayer();
-                }
+                if (timeLeft <= 0) stopPlayer();
             }, 100);
             
             player.play()
@@ -302,16 +268,10 @@
                     isPlaying = true;
                     togglePlayPauseIcon(true);
                 })
-                .catch(error => {
+                .catch(() => {
                     showStatus('Error playing audio');
                     stopPlayer();
                 });
-        }
-
-        async function handleNextSong() {
-            stopPlayer();
-            currentUrl = null;
-            await startScanner();
         }
 
         document.getElementById('playPauseBtn').addEventListener('click', () => {
@@ -320,14 +280,11 @@
                 player.play();
                 isPlaying = true;
                 togglePlayPauseIcon(true);
-                
                 if (!countdown) {
                     countdown = setInterval(() => {
                         const timeLeft = 30 - Math.floor(player.currentTime);
                         updateTimer(timeLeft);
-                        if (timeLeft <= 0) {
-                            stopPlayer();
-                        }
+                        if (timeLeft <= 0) stopPlayer();
                     }, 100);
                 }
             } else {
@@ -341,13 +298,11 @@
             }
         });
 
-        document.getElementById('nextBtn').addEventListener('click', handleNextSong);
-
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showCameraStatus('Camera not available on this device');
-        } else {
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            stopPlayer();
+            currentUrl = null;
             startScanner();
-        }
+        });
 
         const player = document.getElementById('audio-player');
         player.addEventListener('ended', () => {
@@ -356,15 +311,16 @@
         });
 
         player.addEventListener('error', () => {
-            showStatus('Error playing audio preview');
+            showStatus('Error playing audio');
             stopPlayer();
             startScanner();
         });
 
-        window.addEventListener('beforeunload', () => {
-            stopScanner();
-            stopPlayer();
-        });
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            startScanner();
+        } else {
+            showStatus('Camera not available');
+        }
     </script>
 </body>
 </html>
