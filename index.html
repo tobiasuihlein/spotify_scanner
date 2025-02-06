@@ -148,7 +148,7 @@
                     // Parse the URL to validate it
                     const url = new URL(scannedUrl);
                     
-                    // Check if it's a Spotify preview URL (either mp3-preview or audio-preview)
+                    // Check if it's a Spotify preview URL
                     if (!url.hostname.includes('scdn.co') || !url.pathname.includes('preview')) {
                         this.errorMessage.textContent = 'Invalid QR code - not a Spotify preview URL';
                         return;
@@ -163,7 +163,6 @@
             }
 
             onScanError(error) {
-                // We don't need to show QR scanning errors
                 console.log(error);
             }
 
